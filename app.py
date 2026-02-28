@@ -7,9 +7,9 @@ import random
 from collections import defaultdict
 
 # 1. Page Configuration
-st.set_page_config(page_title="2 Master Maint Game", layout="centered")
+st.set_config(page_title="2 Master Maint Game", layout="centered")
 
-# 2. Custom CSS (Preserving all previous styles)
+# 2. Custom CSS
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
@@ -33,7 +33,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Session State Initialization
+# 3. Session State
 if 'logic_db' not in st.session_state: st.session_state.logic_db = None
 if 'sequence_model' not in st.session_state: st.session_state.sequence_model = None
 if 'num_sequence' not in st.session_state: st.session_state.num_sequence = []
@@ -43,29 +43,34 @@ if 'stats_e1' not in st.session_state:
 if 'stats_e2' not in st.session_state: 
     st.session_state.stats_e2 = {"wins": 0, "loss": 0, "streak": 0, "last_res": None, "max_win": 0, "max_loss": 0}
 
-# --- 4. ENGINE LOGIC FUNCTIONS ---
+# --- 4. ENGINE LOGIC FUNCTIONS (Fixed for ValueError) ---
 def train_engines(master_file):
-    data = []
-    raw_content = master_file.getvalue().decode("utf-8").splitlines()
-    for line in raw_content:
-        clean_line = line.strip().strip('"')
-        parts = clean_line.split('\t')
-        if len(parts) == 3: data.append(parts)
-        elif len(parts) == 1 and len(parts[0]) >= 3:
-            s = parts[0]; data.append([s[0], s[1], s[2]])
-    df = pd.DataFrame(data, columns=['number', 'size', 'color'])
-    nums = df['number'].astype(int).tolist()
-    sizes = df['size'].astype(str).tolist()
+    # Load and clean data
+    df = pd.read_csv(master_file)
     
-    # Engine 1: Deterministic (6-Step BIG/SMALL) - NO CHANGE
+    # Check if 'number' column exists
+    if 'number' not in df.columns:
+        st.error("Missing 'number' column in CSV!")
+        return None, None
+        
+    # FIX: Remove empty rows and non-numeric values
+    df['number'] = pd.to_numeric(df['number'], errors='coerce')
+    df = df.dropna(subset=['number'])
+    
+    nums = df['number'].astype(int).tolist()
+    
+    # Calculate Size (BIG/SMALL) for Engine 1 Logic
+    sizes = ["BIG" if n >= 5 else "SMALL" for n in nums]
+    
+    # Engine 1 Logic: Deterministic (6-Step)
     logic = collections.defaultdict(list)
     for i in range(len(nums) - 6):
         pat = "".join(map(str, nums[i:i+6]))
-        next_val = "BIG" if sizes[i+6].upper() == 'B' else "SMALL"
+        next_val = sizes[i+6]
         logic[pat].append(next_val)
     engine1_db = {pat: out[0] for pat, out in logic.items() if len(set(out)) == 1}
 
-    # NEW Engine 2 Algorithm: 6-Digit Number Frequency Logic
+    # Engine 2 Logic: 6-Digit Number Frequency Pattern
     engine2_model = defaultdict(list)
     for i in range(len(nums) - 6):
         pat6 = "".join(map(str, nums[i:i+6]))
@@ -74,10 +79,10 @@ def train_engines(master_file):
     
     return engine1_db, engine2_model
 
-# --- 5. TRAINING PHASE (Unchanged) ---
+# --- 5. TRAINING PHASE ---
 if st.session_state.logic_db is None:
     st.title("🎯 2 Master Maint Game")
-    st.warning("Please upload your historical data CSV file for training.")
+    st.warning("Please upload your overall historical data CSV file for training.")
     u_file = st.file_uploader("Upload CSV", type="csv")
     if u_file:
         if st.button("🚀 ACTIVATE MASTER ENGINES"):
@@ -86,32 +91,30 @@ if st.session_state.logic_db is None:
                 time.sleep(0.05); bar.progress(p)
                 window.markdown(f'<div class="big-training-text">SYNCING DATA: {p}%</div>', unsafe_allow_html=True)
             db1, model2 = train_engines(u_file)
-            st.session_state.logic_db = db1
-            st.session_state.sequence_model = model2
-            st.rerun()
+            if db1 is not None:
+                st.session_state.logic_db = db1
+                st.session_state.sequence_model = model2
+                st.rerun()
     st.stop()
 
 # --- 6. PREDICTION DASHBOARDS ---
 st.title("🎯 2 MASTER MAINT GAME")
 
-# ENGINE 1 CALCULATIONS
+# ENGINE 1
 current_6_pat = "".join(map(str, st.session_state.num_sequence[-6:]))
 pred1 = st.session_state.logic_db.get(current_6_pat, None)
 wr1 = (st.session_state.stats_e1['wins'] / (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss'])) if (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss']) > 0 else 0.0
 
-# NEW ENGINE 2 PREDICTION: 6-Digit Based
-current_6_pat_e2 = "".join(map(str, st.session_state.num_sequence[-6:]))
+# ENGINE 2
 pred2_num = None
 if len(st.session_state.num_sequence) >= 6:
-    if current_6_pat_e2 in st.session_state.sequence_model:
-        vals = st.session_state.sequence_model[current_6_pat_e2]
+    if current_6_pat in st.session_state.sequence_model:
+        vals = st.session_state.sequence_model[current_6_pat]
         pred2_num = max(set(vals), key=vals.count)
 
 wr2 = (st.session_state.stats_e2['wins'] / (st.session_state.stats_e2['wins'] + st.session_state.stats_e2['loss'])) if (st.session_state.stats_e2['wins'] + st.session_state.stats_e2['loss']) > 0 else 0.0
 
-# --- DISPLAY DASHBOARDS ---
 col_e1, col_e2 = st.columns(2)
-
 with col_e1:
     st.markdown('<div class="engine-title-block">Master Engine 1</div>', unsafe_allow_html=True)
     st.markdown(f"""<div class="stat-row">
@@ -136,7 +139,7 @@ with col_e2:
     else:
         st.markdown('<div class="pred-box" style="background-color:#111; color:#444;">WAIT...</div>', unsafe_allow_html=True)
 
-# --- INPUT DIALER ---
+# --- 7. INPUT DIALER ---
 if len(st.session_state.num_sequence) < 6:
     init = st.text_input("Sync last 6 numbers", max_chars=6)
     if st.button("INITIALIZE"):
@@ -153,7 +156,7 @@ else:
     if new_digit is not None:
         actual = "BIG" if new_digit >= 5 else "SMALL"
         
-        # Engine 1 Streak Logic
+        # Streak Logic E1
         res1_h, stat1 = "-", "WAIT"
         if pred1:
             is_w1 = (actual == pred1)
@@ -164,7 +167,7 @@ else:
             st.session_state.stats_e1[f"max_{stat1.lower()}"] = max(st.session_state.stats_e1[f"max_{stat1.lower()}"], st.session_state.stats_e1["streak"])
             res1_h = f'<span class="res-indicator {"res-win" if is_w1 else "res-loss"}"></span> <span class="{"res-text-win" if is_w1 else "res-text-loss"}">{stat1}</span>'
 
-        # Engine 2 Streak Logic
+        # Streak Logic E2
         res2_h, stat2 = "-", "WAIT"
         if pred2_num is not None:
             sz2_p = "BIG" if pred2_num >= 5 else "SMALL"
@@ -184,7 +187,7 @@ else:
         })
         st.session_state.num_sequence.append(new_digit); st.rerun()
 
-# --- MASTER HISTORY TABLE ---
+# --- 8. MASTER HISTORY ---
 if st.session_state.history:
     st.markdown("### 📋 MASTER HISTORY")
     h_df = pd.DataFrame(st.session_state.history)
