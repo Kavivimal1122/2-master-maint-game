@@ -9,36 +9,27 @@ from collections import defaultdict
 # 1. Page Configuration
 st.set_page_config(page_title="2 Master Maint Game", layout="centered")
 
-# 2. Custom CSS (Preserving all previous styles + adding result indicator style)
+# 2. Custom CSS (Preserving all previous styles)
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
     .big-training-text { font-size: 30px; font-weight: 900; color: #00ffcc; text-align: center; }
-    
     .engine-title-block {
         background-color: #1f77b4; color: white; padding: 10px; border-radius: 8px;
         text-align: center; font-weight: bold; margin-bottom: 10px; border: 1px solid #444; font-size: 16px;
     }
-    
     .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-top: 20px; }
     .summary-card { background-color: #0e1117; border: 2px solid #444; padding: 15px; border-radius: 10px; text-align: center; }
     .summary-label { font-size: 12px; color: #888; font-weight: bold; text-transform: uppercase; }
     .summary-value { font-size: 24px; font-weight: 900; color: #ffff00; }
-
     .pred-box { padding: 20px; border-radius: 15px; text-align: center; border: 2px solid white; margin-bottom: 10px; font-weight: bold; }
     .stat-row { display: flex; justify-content: space-around; background: #0e1117; padding: 10px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px; }
     .stat-value { font-size: 22px; font-weight: 900; color: white; }
     
     /* Result Indicator Styles */
-    .res-indicator {
-        display: inline-block;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        margin-right: 8px;
-    }
-    .res-win { background-color: #28a745; border: 2px solid #fff; box-shadow: 0 0 8px #28a745; }
-    .res-loss { background-color: #dc3545; border: 2px solid #fff; box-shadow: 0 0 8px #dc3545; }
+    .res-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+    .res-win { background-color: #28a745; border: 1px solid #fff; }
+    .res-loss { background-color: #dc3545; border: 1px solid #fff; }
     .res-text-win { color: #28a745; font-weight: bold; }
     .res-text-loss { color: #dc3545; font-weight: bold; }
 
@@ -53,7 +44,7 @@ if 'sequence_model' not in st.session_state: st.session_state.sequence_model = N
 if 'num_sequence' not in st.session_state: st.session_state.num_sequence = []
 if 'history' not in st.session_state: st.session_state.history = []
 if 'stats' not in st.session_state: 
-    st.session_state.stats = {"wins": 0, "loss": 0, "streak": 0, "last_res": None, "max_win": 0, "max_loss": 0}
+    st.session_state.stats = {"wins": 0, "loss": 0, "streak_e1": 0, "last_res_e1": None, "streak_e2": 0, "last_res_e2": None, "max_win": 0, "max_loss": 0}
 
 # --- 4. ENGINE LOGIC FUNCTIONS (Unchanged) ---
 def train_engines(master_file):
@@ -80,16 +71,13 @@ def train_engines(master_file):
         engine2_model[key].append(nums[i+2])
     return engine1_db, engine2_model, nums
 
-# --- 5. TRAINING PHASE (Updated Flow) ---
+# --- 5. TRAINING PHASE (Unchanged) ---
 if st.session_state.logic_db is None:
     st.title("🎯 2 Master Maint Game")
     st.warning("Please upload your overall historical data CSV file for training.")
-    
-    # Direct CSV Uploader
-    u_file = st.file_uploader("Upload historical game data", type="csv", help="Limit 200MB per file • CSV")
-    
+    u_file = st.file_uploader("Upload historical game data", type="csv")
     if u_file:
-        st.success("Training data CSV file uploaded successfully. This file will be used for training process.")
+        st.success("Training data CSV file uploaded successfully.")
         if st.button("🚀 ACTIVATE MASTER ENGINES"):
             window = st.empty()
             percent_text = st.empty()
@@ -102,16 +90,14 @@ if st.session_state.logic_db is None:
             db1, model2, raw_nums = train_engines(u_file)
             st.session_state.logic_db = db1
             st.session_state.sequence_model = model2
-            st.session_state.raw_numbers = raw_nums
             st.rerun()
     st.stop()
 
 # --- 6. PREDICTION DASHBOARD ---
 st.title("🎯 2 MASTER MAINT GAME")
 
-# Unified Statistics
-total_played = len(st.session_state.history)
-win_rate = (st.session_state.stats['wins'] / (st.session_state.stats['wins'] + st.session_state.stats['loss'])) if (st.session_state.stats['wins'] + st.session_state.stats['loss']) > 0 else 0
+total_played = len([h for h in st.session_state.history if h['Actual'] != 'WAIT'])
+win_rate = (st.session_state.stats['wins'] / total_played) if total_played > 0 else 0
 
 st.markdown(f"""
     <div class="stat-row">
@@ -131,7 +117,6 @@ if current_2_key in st.session_state.sequence_model:
     vals = st.session_state.sequence_model[current_2_key]
     pred2_num = max(set(vals), key=vals.count)
 
-# Engine Title Blocks
 col_e1, col_e2 = st.columns(2)
 with col_e1:
     st.markdown('<div class="engine-title-block">Master Engine 1 (Pattern)</div>', unsafe_allow_html=True)
@@ -166,30 +151,63 @@ else:
 
     if new_digit is not None:
         actual = "BIG" if new_digit >= 5 else "SMALL"
-        active_pred = pred1 if pred1 else ("BIG" if (pred2_num is not None and pred2_num >= 5) else "SMALL")
-        is_win = (actual == active_pred)
-        res_type = "win" if is_win else "loss"
-        st.session_state.stats["wins" if is_win else "loss"] += 1
-        if res_type == st.session_state.stats["last_res"]: st.session_state.stats["streak"] += 1
-        else: st.session_state.stats["streak"], st.session_state.stats["last_res"] = 1, res_type
-        st.session_state.stats[f"max_{res_type}"] = max(st.session_state.stats[f"max_{res_type}"], st.session_state.stats["streak"])
+        
+        # Streak Calculation Logic for Engine 1
+        res1_status, res1_html = "WAIT", "-"
+        if pred1:
+            is_win1 = (actual == pred1)
+            res1_status = "WIN" if is_win1 else "LOSS"
+            if res1_status == st.session_state.stats["last_res_e1"]:
+                st.session_state.stats["streak_e1"] += 1
+            else:
+                st.session_state.stats["streak_e1"] = 1
+                st.session_state.stats["last_res_e1"] = res1_status
+            
+            # Global Stats update (Based on E1)
+            if is_win1: st.session_state.stats["wins"] += 1
+            else: st.session_state.stats["loss"] += 1
+            
+            indicator_html = f'<span class="res-indicator {"res-win" if is_win1 else "res-loss"}"></span>'
+            res_text_class = "res-text-win" if is_win1 else "res-text-loss"
+            res1_html = f'{indicator_html} <span class="{res_text_class}">{res1_status}</span>'
+        
+        # Streak Calculation Logic for Engine 2
+        res2_status, res2_html = "WAIT", "-"
+        if pred2_num is not None:
+            pred2_size = "BIG" if pred2_num >= 5 else "SMALL"
+            is_win2 = (actual == pred2_size)
+            res2_status = "WIN" if is_win2 else "LOSS"
+            if res2_status == st.session_state.stats["last_res_e2"]:
+                st.session_state.stats["streak_e2"] += 1
+            else:
+                st.session_state.stats["streak_e2"] = 1
+                st.session_state.stats["last_res_e2"] = res2_status
+            
+            indicator_html2 = f'<span class="res-indicator {"res-win" if is_win2 else "res-loss"}"></span>'
+            res_text_class2 = "res-text-win" if is_win2 else "res-text-loss"
+            res2_html = f'{indicator_html2} <span class="{res_text_class2}">{res2_status}</span>'
 
-        # History with Indicator
-        indicator_html = f'<span class="res-indicator {"res-win" if is_win else "res-loss"}"></span>'
-        res_text_class = "res-text-win" if is_win else "res-text-loss"
-        formatted_res = f'{indicator_html} <span class="{res_text_class}">{"WIN" if is_win else "LOSS"}</span>'
+        # Update Global Max Streaks
+        if st.session_state.stats["last_res_e1"] == "WIN":
+            st.session_state.stats["max_win"] = max(st.session_state.stats["max_win"], st.session_state.stats["streak_e1"])
+        elif st.session_state.stats["last_res_e1"] == "LOSS":
+            st.session_state.stats["max_loss"] = max(st.session_state.stats["max_loss"], st.session_state.stats["streak_e1"])
 
+        # History Entry with 9 Columns
         st.session_state.history.insert(0, {
             "Round": len(st.session_state.history) + 1,
             "Number": new_digit,
             "Actual": actual,
             "E1 Pred": pred1 if pred1 else "WAIT",
+            "→ Result (E1)": res1_html,
+            "Running Streak (E1)": st.session_state.stats["streak_e1"] if pred1 else "-",
             "E2 Pred": f"{pred2_num}" if pred2_num is not None else "WAIT",
-            "Result": formatted_res
+            "→ Result (E2)": res2_html,
+            "Running Streak (E2)": st.session_state.stats["streak_e2"] if pred2_num is not None else "-"
         })
         st.session_state.num_sequence.append(new_digit); st.rerun()
 
-# --- 7. BATCH SUMMARY & HISTORY ---
+# --- 7. BATCH SUMMARY & MASTER HISTORY ---
 if total_played >= 500:
     st.divider()
     st.markdown(f"""
@@ -205,7 +223,8 @@ if total_played >= 500:
 if st.session_state.history:
     st.markdown("### 📋 MASTER HISTORY")
     history_df = pd.DataFrame(st.session_state.history)
-    # Using st.write to render the HTML indicator inside the table
+    
+    # Render 9-column HTML Table 
     st.write(history_df.head(15).to_html(escape=False, index=False), unsafe_allow_html=True)
     
     csv = history_df.to_csv(index=False).encode('utf-8')
