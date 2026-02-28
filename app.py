@@ -6,7 +6,7 @@ import time
 import random
 from collections import defaultdict
 
-# 1. Page Configuration - FIXED LINE BELOW
+# 1. Page Configuration
 st.set_page_config(page_title="2 Master Maint Game", layout="centered")
 
 # 2. Custom CSS
@@ -33,7 +33,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Session State
+# 3. Session State Initialization
 if 'logic_db' not in st.session_state: st.session_state.logic_db = None
 if 'sequence_model' not in st.session_state: st.session_state.sequence_model = None
 if 'num_sequence' not in st.session_state: st.session_state.num_sequence = []
@@ -55,7 +55,7 @@ def train_engines(master_file):
     nums = df['number'].astype(int).tolist()
     sizes = ["BIG" if n >= 5 else "SMALL" for n in nums]
     
-    # Engine 1 Logic: Deterministic (6-Step)
+    # Engine 1 Logic: Deterministic (6-Step) - Unchanged
     logic = collections.defaultdict(list)
     for i in range(len(nums) - 6):
         pat = "".join(map(str, nums[i:i+6]))
@@ -63,12 +63,12 @@ def train_engines(master_file):
         logic[pat].append(next_val)
     engine1_db = {pat: out[0] for pat, out in logic.items() if len(set(out)) == 1}
 
-    # Engine 2 Logic: 6-Digit Number Frequency Pattern
+    # NEW Engine 2 Logic: 6-Digit Number Frequency Pattern
+    # This replaces the old 2-step model with your requested 6-digit frequency logic
     engine2_model = defaultdict(list)
     for i in range(len(nums) - 6):
-        pat6 = "".join(map(str, nums[i:i+6]))
-        next_num = nums[i+6]
-        engine2_model[pat6].append(next_num)
+        key = tuple(nums[i:i+6])
+        engine2_model[key].append(nums[i+6])
     
     return engine1_db, engine2_model
 
@@ -94,13 +94,17 @@ if st.session_state.logic_db is None:
 st.title("🎯 2 MASTER MAINT GAME")
 
 current_6_pat = "".join(map(str, st.session_state.num_sequence[-6:]))
+current_6_tuple = tuple(st.session_state.num_sequence[-6:])
+
+# E1 Prediction
 pred1 = st.session_state.logic_db.get(current_6_pat, None)
 wr1 = (st.session_state.stats_e1['wins'] / (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss'])) if (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss']) > 0 else 0.0
 
+# E2 Prediction (New 6-Digit Frequency Logic)
 pred2_num = None
 if len(st.session_state.num_sequence) >= 6:
-    if current_6_pat in st.session_state.sequence_model:
-        vals = st.session_state.sequence_model[current_6_pat]
+    if current_6_tuple in st.session_state.sequence_model:
+        vals = st.session_state.sequence_model[current_6_tuple]
         pred2_num = max(set(vals), key=vals.count)
 
 wr2 = (st.session_state.stats_e2['wins'] / (st.session_state.stats_e2['wins'] + st.session_state.stats_e2['loss'])) if (st.session_state.stats_e2['wins'] + st.session_state.stats_e2['loss']) > 0 else 0.0
