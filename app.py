@@ -9,51 +9,45 @@ from collections import defaultdict
 # 1. Page Configuration
 st.set_page_config(page_title="2 Master Maint Game", layout="centered")
 
-# 2. Custom CSS for UI Improvements
+# 2. Custom CSS (Preserving all previous styles + adding result indicator style)
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
     .big-training-text { font-size: 30px; font-weight: 900; color: #00ffcc; text-align: center; }
     
-    /* Engine Title Blocks */
     .engine-title-block {
-        background-color: #1f77b4;
-        color: white;
-        padding: 10px;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: bold;
-        margin-bottom: 10px;
-        border: 1px solid #444;
-        font-size: 16px;
+        background-color: #1f77b4; color: white; padding: 10px; border-radius: 8px;
+        text-align: center; font-weight: bold; margin-bottom: 10px; border: 1px solid #444; font-size: 16px;
     }
     
-    /* Summary Result Blocks */
-    .summary-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-        gap: 10px;
-        margin-top: 20px;
-    }
-    .summary-card {
-        background-color: #0e1117;
-        border: 2px solid #444;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-    }
+    .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-top: 20px; }
+    .summary-card { background-color: #0e1117; border: 2px solid #444; padding: 15px; border-radius: 10px; text-align: center; }
     .summary-label { font-size: 12px; color: #888; font-weight: bold; text-transform: uppercase; }
     .summary-value { font-size: 24px; font-weight: 900; color: #ffff00; }
 
     .pred-box { padding: 20px; border-radius: 15px; text-align: center; border: 2px solid white; margin-bottom: 10px; font-weight: bold; }
     .stat-row { display: flex; justify-content: space-around; background: #0e1117; padding: 10px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px; }
     .stat-value { font-size: 22px; font-weight: 900; color: white; }
+    
+    /* Result Indicator Styles */
+    .res-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .res-win { background-color: #28a745; border: 2px solid #fff; box-shadow: 0 0 8px #28a745; }
+    .res-loss { background-color: #dc3545; border: 2px solid #fff; box-shadow: 0 0 8px #dc3545; }
+    .res-text-win { color: #28a745; font-weight: bold; }
+    .res-text-loss { color: #dc3545; font-weight: bold; }
+
     div.stButton > button { width: 100% !important; height: 50px !important; font-weight: 900 !important; background-color: #ffff00 !important; color: black !important; border: 1px solid black !important; }
     #MainMenu, footer, header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Session State Initialization (No changes to logic)
+# 3. Session State Initialization
 if 'logic_db' not in st.session_state: st.session_state.logic_db = None
 if 'sequence_model' not in st.session_state: st.session_state.sequence_model = None
 if 'num_sequence' not in st.session_state: st.session_state.num_sequence = []
@@ -61,7 +55,7 @@ if 'history' not in st.session_state: st.session_state.history = []
 if 'stats' not in st.session_state: 
     st.session_state.stats = {"wins": 0, "loss": 0, "streak": 0, "last_res": None, "max_win": 0, "max_loss": 0}
 
-# --- 4. ENGINE LOGIC FUNCTIONS (Preserved) ---
+# --- 4. ENGINE LOGIC FUNCTIONS (Unchanged) ---
 def train_engines(master_file):
     data = []
     raw_content = master_file.getvalue().decode("utf-8").splitlines()
@@ -71,54 +65,45 @@ def train_engines(master_file):
         if len(parts) == 3: data.append(parts)
         elif len(parts) == 1 and len(parts[0]) >= 3:
             s = parts[0]; data.append([s[0], s[1], s[2]])
-    
     df = pd.DataFrame(data, columns=['number', 'size', 'color'])
     nums = df['number'].astype(int).tolist()
     sizes = df['size'].astype(str).tolist()
-    
     logic = collections.defaultdict(list)
     for i in range(len(nums) - 6):
         pat = "".join(map(str, nums[i:i+6]))
         next_val = "BIG" if sizes[i+6].upper() == 'B' else "SMALL"
         logic[pat].append(next_val)
     engine1_db = {pat: out[0] for pat, out in logic.items() if len(set(out)) == 1}
-
     engine2_model = defaultdict(list)
     for i in range(len(nums)-2):
         key = (nums[i], nums[i+1])
         engine2_model[key].append(nums[i+2])
-    
     return engine1_db, engine2_model, nums
 
-# --- 5. TRAINING PHASE (Added File Name Ask & Training %) ---
+# --- 5. TRAINING PHASE (Updated Flow) ---
 if st.session_state.logic_db is None:
-    st.title("🤖 2 Master Maint Training")
+    st.title("🎯 2 Master Maint Game")
+    st.warning("Please upload your overall historical data CSV file for training.")
     
-    # Feature 4: Ask File Name Before Upload
-    file_name_input = st.text_input("What file do you want to upload? Please enter the file name.", placeholder="e.g. training_file.csv")
+    # Direct CSV Uploader
+    u_file = st.file_uploader("Upload historical game data", type="csv", help="Limit 200MB per file • CSV")
     
-    if file_name_input:
-        u_file = st.file_uploader(f"Upload {file_name_input}", type="csv")
-        
-        if u_file:
-            if st.button("🚀 ACTIVATE MASTER ENGINES"):
-                window = st.empty()
-                percent_text = st.empty()
-                bar = st.progress(0)
-                
-                # Feature 5: Show Training Percentage
-                for p in range(0, 101, 5):
-                    time.sleep(0.05)
-                    bar.progress(p)
-                    # Numeric Percentage Display
-                    percent_text.markdown(f"<h3 style='text-align: center; color: white;'>Training Progress: {p}%</h3>", unsafe_allow_html=True)
-                    window.markdown(f'<div class="big-training-text">SYNCING DATA...</div>', unsafe_allow_html=True)
-                
-                db1, model2, raw_nums = train_engines(u_file)
-                st.session_state.logic_db = db1
-                st.session_state.sequence_model = model2
-                st.session_state.raw_numbers = raw_nums
-                st.rerun()
+    if u_file:
+        st.success("Training data CSV file uploaded successfully. This file will be used for training process.")
+        if st.button("🚀 ACTIVATE MASTER ENGINES"):
+            window = st.empty()
+            percent_text = st.empty()
+            bar = st.progress(0)
+            for p in range(0, 101, 5):
+                time.sleep(0.05)
+                bar.progress(p)
+                percent_text.markdown(f"<h3 style='text-align: center; color: white;'>Training Progress: {p}%</h3>", unsafe_allow_html=True)
+                window.markdown(f'<div class="big-training-text">SYNCING DATA...</div>', unsafe_allow_html=True)
+            db1, model2, raw_nums = train_engines(u_file)
+            st.session_state.logic_db = db1
+            st.session_state.sequence_model = model2
+            st.session_state.raw_numbers = raw_nums
+            st.rerun()
     st.stop()
 
 # --- 6. PREDICTION DASHBOARD ---
@@ -146,7 +131,7 @@ if current_2_key in st.session_state.sequence_model:
     vals = st.session_state.sequence_model[current_2_key]
     pred2_num = max(set(vals), key=vals.count)
 
-# Feature 1: Block Background for Engine Names
+# Engine Title Blocks
 col_e1, col_e2 = st.columns(2)
 with col_e1:
     st.markdown('<div class="engine-title-block">Master Engine 1 (Pattern)</div>', unsafe_allow_html=True)
@@ -189,60 +174,42 @@ else:
         else: st.session_state.stats["streak"], st.session_state.stats["last_res"] = 1, res_type
         st.session_state.stats[f"max_{res_type}"] = max(st.session_state.stats[f"max_{res_type}"], st.session_state.stats["streak"])
 
+        # History with Indicator
+        indicator_html = f'<span class="res-indicator {"res-win" if is_win else "res-loss"}"></span>'
+        res_text_class = "res-text-win" if is_win else "res-text-loss"
+        formatted_res = f'{indicator_html} <span class="{res_text_class}">{"WIN" if is_win else "LOSS"}</span>'
+
         st.session_state.history.insert(0, {
             "Round": len(st.session_state.history) + 1,
             "Number": new_digit,
             "Actual": actual,
             "E1 Pred": pred1 if pred1 else "WAIT",
             "E2 Pred": f"{pred2_num}" if pred2_num is not None else "WAIT",
-            "Result": "WIN" if is_win else "LOSS"
+            "Result": formatted_res
         })
         st.session_state.num_sequence.append(new_digit); st.rerun()
 
-# --- 7. BATCH SUMMARY (For 500 Questions) ---
-# Feature 3: Final Result Summary Structure
+# --- 7. BATCH SUMMARY & HISTORY ---
 if total_played >= 500:
     st.divider()
-    st.subheader("🏁 FINAL PERFORMANCE SUMMARY (500+ ROUNDS)")
     st.markdown(f"""
         <div class="summary-container">
-            <div class="summary-card">
-                <div class="summary-label">MAX WIN</div>
-                <div class="summary-value">{st.session_state.stats['max_win']}</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-label">MAX LOSS</div>
-                <div class="summary-value">{st.session_state.stats['max_loss']}</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-label">WINS</div>
-                <div class="summary-value">{st.session_state.stats['wins']}</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-label">LOSS</div>
-                <div class="summary-value">{st.session_state.stats['loss']}</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-label">WIN RATE</div>
-                <div class="summary-value" style="color:#00ffcc;">{win_rate:.2f}</div>
-            </div>
+            <div class="summary-card"><div class="summary-label">MAX WIN</div><div class="summary-value">{st.session_state.stats['max_win']}</div></div>
+            <div class="summary-card"><div class="summary-label">MAX LOSS</div><div class="summary-value">{st.session_state.stats['max_loss']}</div></div>
+            <div class="summary-card"><div class="summary-label">WINS</div><div class="summary-value">{st.session_state.stats['wins']}</div></div>
+            <div class="summary-card"><div class="summary-label">LOSS</div><div class="summary-value">{st.session_state.stats['loss']}</div></div>
+            <div class="summary-card"><div class="summary-label">WIN RATE</div><div class="summary-value" style="color:#00ffcc;">{win_rate:.2f}</div></div>
         </div>
     """, unsafe_allow_html=True)
 
-# Feature 2: Game Result Download Option
 if st.session_state.history:
     st.markdown("### 📋 MASTER HISTORY")
     history_df = pd.DataFrame(st.session_state.history)
-    st.table(history_df.head(15))
+    # Using st.write to render the HTML indicator inside the table
+    st.write(history_df.head(15).to_html(escape=False, index=False), unsafe_allow_html=True)
     
-    # Download Button
     csv = history_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 DOWNLOAD GAME RESULTS (CSV)",
-        data=csv,
-        file_name='game_results.csv',
-        mime='text/csv',
-    )
+    st.download_button(label="📥 DOWNLOAD GAME RESULTS (CSV)", data=csv, file_name='game_results.csv', mime='text/csv')
 
 st.markdown("---")
 if st.button("🔄 FULL SYSTEM RESET"):
