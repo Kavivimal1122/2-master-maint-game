@@ -6,8 +6,8 @@ import time
 import random
 from collections import defaultdict
 
-# 1. Page Configuration
-st.set_config(page_title="2 Master Maint Game", layout="centered")
+# 1. Page Configuration - FIXED LINE BELOW
+st.set_page_config(page_title="2 Master Maint Game", layout="centered")
 
 # 2. Custom CSS
 st.markdown("""
@@ -43,23 +43,16 @@ if 'stats_e1' not in st.session_state:
 if 'stats_e2' not in st.session_state: 
     st.session_state.stats_e2 = {"wins": 0, "loss": 0, "streak": 0, "last_res": None, "max_win": 0, "max_loss": 0}
 
-# --- 4. ENGINE LOGIC FUNCTIONS (Fixed for ValueError) ---
+# --- 4. ENGINE LOGIC FUNCTIONS ---
 def train_engines(master_file):
-    # Load and clean data
     df = pd.read_csv(master_file)
-    
-    # Check if 'number' column exists
     if 'number' not in df.columns:
         st.error("Missing 'number' column in CSV!")
         return None, None
         
-    # FIX: Remove empty rows and non-numeric values
     df['number'] = pd.to_numeric(df['number'], errors='coerce')
     df = df.dropna(subset=['number'])
-    
     nums = df['number'].astype(int).tolist()
-    
-    # Calculate Size (BIG/SMALL) for Engine 1 Logic
     sizes = ["BIG" if n >= 5 else "SMALL" for n in nums]
     
     # Engine 1 Logic: Deterministic (6-Step)
@@ -100,12 +93,10 @@ if st.session_state.logic_db is None:
 # --- 6. PREDICTION DASHBOARDS ---
 st.title("🎯 2 MASTER MAINT GAME")
 
-# ENGINE 1
 current_6_pat = "".join(map(str, st.session_state.num_sequence[-6:]))
 pred1 = st.session_state.logic_db.get(current_6_pat, None)
 wr1 = (st.session_state.stats_e1['wins'] / (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss'])) if (st.session_state.stats_e1['wins'] + st.session_state.stats_e1['loss']) > 0 else 0.0
 
-# ENGINE 2
 pred2_num = None
 if len(st.session_state.num_sequence) >= 6:
     if current_6_pat in st.session_state.sequence_model:
